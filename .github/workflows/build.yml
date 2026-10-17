@@ -14,6 +14,11 @@ on:
       - 'versions.yaml'
       - '.github/workflows/build.yml'
 
+env:
+  CC_PROXY_REPO: courage-zen/cc-proxy
+  MULTICA_REPO: multica-ai/multica
+  CODEX_REPO: openai/codex
+
 jobs:
   build:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
@@ -21,9 +26,52 @@ jobs:
       contents: read
       packages: write
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            codex_arch: x86_64
+          - arch: arm64
+            codex_arch: aarch64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Extract versions
+        id: versions
+        run: |
+          PROJECT_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['project']['version'])")
+          CC_PROXY_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['cc_proxy']['version'])")
+          MULTICA_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['multica']['version'])")
+          CODEX_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['codex']['version'])")
+          echo "PROJECT_VERSION=$PROJECT_VERSION" >> $GITHUB_OUTPUT
+          echo "CC_PROXY_VERSION=$CC_PROXY_VERSION" >> $GITHUB_OUTPUT
+          echo "MULTICA_VERSION=$MULTICA_VERSION" >> $GITHUB_OUTPUT
+          echo "CODEX_VERSION=$CODEX_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CC_PROXY_VERSION: ${{ steps.versions.outputs.CC_PROXY_VERSION }}
+          MULTICA_VERSION: ${{ steps.versions.outputs.MULTICA_VERSION }}
+          CODEX_VERSION: ${{ steps.versions.outputs.CODEX_VERSION }}
+        run: |
+          set -e
+          mkdir -p binaries/${{ matrix.arch }}
+
+          gh release download "v${CC_PROXY_VERSION}" -R "${CC_PROXY_REPO}" -p "cc-proxy-${{ matrix.arch }}" -O "binaries/${{ matrix.arch }}/cc-proxy"
+
+          gh release download "v${MULTICA_VERSION}" -R "${MULTICA_REPO}" -p "multica-cli-*-linux-${{ matrix.arch }}.tar.gz" -O "/tmp/multica.tar.gz"
+          tar -xzf /tmp/multica.tar.gz -C binaries/${{ matrix.arch }} multica
+          rm /tmp/multica.tar.gz
+
+          gh release download "rust-v${CODEX_VERSION}" -R "${CODEX_REPO}" -p "codex-${{ matrix.codex_arch }}-unknown-linux-musl.tar.gz" -O "/tmp/codex.tar.gz"
+          tar -xzf /tmp/codex.tar.gz -C binaries/${{ matrix.arch }} "codex-${{ matrix.codex_arch }}-unknown-linux-musl"
+          mv "binaries/${{ matrix.arch }}/codex-${{ matrix.codex_arch }}-unknown-linux-musl" "binaries/${{ matrix.arch }}/codex"
+          rm /tmp/codex.tar.gz
+
+          ls -la binaries/${{ matrix.arch }}/
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -38,49 +86,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract versions
-        id: versions
-        run: |
-          PROJECT_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['project']['version'])")
-          CC_PROXY_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['cc_proxy']['version'])")
-          MULTICA_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['multica']['version'])")
-          CODEX_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['codex']['version'])")
-          echo "PROJECT_VERSION=$PROJECT_VERSION" >> $GITHUB_OUTPUT
-          echo "CC_PROXY_VERSION=$CC_PROXY_VERSION" >> $GITHUB_OUTPUT
-          echo "MULTICA_VERSION=$MULTICA_VERSION" >> $GITHUB_OUTPUT
-          echo "CODEX_VERSION=$CODEX_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Build amd64
+      - name: Build ${{ matrix.arch }}
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./base/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
           push: ${{ github.event_name == 'push' }}
           tags: |
-            ghcr.io/${{ github.repository }}/base:latest-amd64
-            ghcr.io/${{ github.repository }}/base:${{ steps.versions.outputs.PROJECT_VERSION }}-amd64
+            ghcr.io/${{ github.repository }}/base:latest-${{ matrix.arch }}
+            ghcr.io/${{ github.repository }}/base:${{ steps.versions.outputs.PROJECT_VERSION }}-${{ matrix.arch }}
           build-args: |
-            CC_PROXY_VERSION=${{ steps.versions.outputs.CC_PROXY_VERSION }}
-            MULTICA_VERSION=${{ steps.versions.outputs.MULTICA_VERSION }}
-            CODEX_VERSION=${{ steps.versions.outputs.CODEX_VERSION }}
-
-      - name: Build arm64
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./base/Dockerfile
-          platforms: linux/arm64
-          push: ${{ github.event_name == 'push' }}
-          tags: |
-            ghcr.io/${{ github.repository }}/base:latest-arm64
-            ghcr.io/${{ github.repository }}/base:${{ steps.versions.outputs.PROJECT_VERSION }}-arm64
-          build-args: |
-            CC_PROXY_VERSION=${{ steps.versions.outputs.CC_PROXY_VERSION }}
-            MULTICA_VERSION=${{ steps.versions.outputs.MULTICA_VERSION }}
-            CODEX_VERSION=${{ steps.versions.outputs.CODEX_VERSION }}
+            TARGETARCH=${{ matrix.arch }}
 
       - name: Report image size
         if: github.event_name == 'push'
         run: |
-          docker images --format "table={{.Repository}}:{{.Tag}}\t{{.Size}}" | grep codex-with-multica || true
+          docker buildx imagetools inspect "ghcr.io/${{ github.repository }}/base:${{ steps.versions.outputs.PROJECT_VERSION }}-${{ matrix.arch }}" --format '{{json .Manifest}}' | python3 -c "
+          import json, sys
+          m = json.load(sys.stdin)
+          total = sum(l.get('size', 0) for m in m.get('manifests', []) for l in (m.get('layers') or []))
+          print(f'${{ matrix.arch }} compressed layers total: {total/1024/1024:.1f} MB')
+          " 2>/dev/null || echo "inspect skipped"

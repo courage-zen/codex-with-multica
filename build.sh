@@ -41,6 +41,28 @@ CODEX_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('${SCRIPT_DIR
     echo "Error: failed to read codex version" >&2; exit 1
 }
 
+case "${ARCH}" in
+    amd64) CODEX_ARCH="x86_64" ;;
+    arm64) CODEX_ARCH="aarch64" ;;
+esac
+
+# Download binaries
+echo "Downloading binaries to binaries/${ARCH}/ ..."
+mkdir -p "${SCRIPT_DIR}/binaries/${ARCH}"
+
+gh release download "v${CC_PROXY_VERSION}" -R courage-zen/cc-proxy -p "cc-proxy-${ARCH}" -O "binaries/${ARCH}/cc-proxy" --clobber
+
+gh release download "v${MULTICA_VERSION}" -R multica-ai/multica -p "multica-cli-*-linux-${ARCH}.tar.gz" -O "/tmp/multica.tar.gz" --clobber
+tar -xzf /tmp/multica.tar.gz -C "binaries/${ARCH}" multica
+rm /tmp/multica.tar.gz
+
+gh release download "rust-v${CODEX_VERSION}" -R openai/codex -p "codex-${CODEX_ARCH}-unknown-linux-musl.tar.gz" -O "/tmp/codex.tar.gz" --clobber
+tar -xzf /tmp/codex.tar.gz -C "binaries/${ARCH}" "codex-${CODEX_ARCH}-unknown-linux-musl"
+mv "binaries/${ARCH}/codex-${CODEX_ARCH}-unknown-linux-musl" "binaries/${ARCH}/codex"
+rm /tmp/codex.tar.gz
+
+chmod +x "binaries/${ARCH}/"*
+
 DOCKERFILE="${SCRIPT_DIR}/base/Dockerfile"
 TAG="codex-with-multica:${PROJECT_VERSION}-${ARCH}"
 
@@ -51,9 +73,6 @@ echo "  MULTICA_VERSION=${MULTICA_VERSION}"
 echo "  CODEX_VERSION=${CODEX_VERSION}"
 
 docker build --progress=plain -f "${DOCKERFILE}" \
-    --build-arg "CC_PROXY_VERSION=${CC_PROXY_VERSION}" \
-    --build-arg "MULTICA_VERSION=${MULTICA_VERSION}" \
-    --build-arg "CODEX_VERSION=${CODEX_VERSION}" \
     --build-arg "TARGETARCH=${ARCH}" \
     -t "${TAG}" "${SCRIPT_DIR}" || {
     echo "Error: docker build failed for ${TAG}" >&2; exit 1
