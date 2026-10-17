@@ -99,20 +99,18 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           IMAGE="ghcr.io/${{ github.repository }}/base:${{ steps.versions.outputs.PROJECT_VERSION }}-${{ matrix.arch }}"
-          DIGEST=$(docker buildx imagetools inspect "${IMAGE}" --format '{{json .Manifest}}' | python3 -c "
+          DIGEST=$(docker buildx imagetools inspect "${IMAGE}" --format '{{json .Manifest}}' | ARCH="${ARCH}" python3 -c "
           import json, sys, os
           idx = json.load(sys.stdin)
           for m in idx.get('manifests', []):
               if (m.get('platform') or {}).get('architecture') == os.environ['ARCH']:
-                  print(m['digest']); break
-          ")
-          if [ -n "${DIGEST}" ]; then
-              docker buildx imagetools inspect "${IMAGE}@${DIGEST}" --raw | python3 -c "
-              import json, sys
-              m = json.load(sys.stdin)
-              total = sum(l.get('size', 0) for l in m.get('layers', []))
-              print(f'${{ matrix.arch }} compressed layers total: {total/1024/1024:.1f} MB')
-              "
-          else
-              echo "inspect skipped"
-          fi
+                  print(m['digest'])
+                  break
+          ") || DIGEST=""
+          if [ -z "${DIGEST}" ]; then echo "inspect skipped"; exit 0; fi
+          docker buildx imagetools inspect "${IMAGE}@${DIGEST}" --raw | python3 -c "
+          import json, sys
+          m = json.load(sys.stdin)
+          total = sum(l.get('size', 0) for l in m.get('layers', []))
+          print(f'${{ matrix.arch }} compressed layers total: {total/1024/1024:.1f} MB')
+          "
