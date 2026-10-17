@@ -1,0 +1,8 @@
+run.sh
+*.local.yaml
+*.secret.yaml
+.env
+test/
+config/multica-config.json
+config/cc-proxy-config.yaml
+.worktrees/
