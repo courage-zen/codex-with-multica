@@ -15,7 +15,6 @@ on:
       - '.github/workflows/build.yml'
 
 env:
-  CC_PROXY_REPO: courage-zen/cc-proxy
   MULTICA_REPO: multica-ai/multica
   CODEX_REPO: openai/codex
 
@@ -42,25 +41,20 @@ jobs:
         id: versions
         run: |
           PROJECT_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['project']['version'])")
-          CC_PROXY_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['cc_proxy']['version'])")
           MULTICA_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['multica']['version'])")
           CODEX_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['codex']['version'])")
           echo "PROJECT_VERSION=$PROJECT_VERSION" >> $GITHUB_OUTPUT
-          echo "CC_PROXY_VERSION=$CC_PROXY_VERSION" >> $GITHUB_OUTPUT
           echo "MULTICA_VERSION=$MULTICA_VERSION" >> $GITHUB_OUTPUT
           echo "CODEX_VERSION=$CODEX_VERSION" >> $GITHUB_OUTPUT
 
       - name: Download binaries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CC_PROXY_VERSION: ${{ steps.versions.outputs.CC_PROXY_VERSION }}
           MULTICA_VERSION: ${{ steps.versions.outputs.MULTICA_VERSION }}
           CODEX_VERSION: ${{ steps.versions.outputs.CODEX_VERSION }}
         run: |
           set -e
           mkdir -p binaries/${{ matrix.arch }}
-
-          gh release download "v${CC_PROXY_VERSION}" -R "${CC_PROXY_REPO}" -p "cc-proxy-${{ matrix.arch }}" -O "binaries/${{ matrix.arch }}/cc-proxy"
 
           gh release download "v${MULTICA_VERSION}" -R "${MULTICA_REPO}" -p "multica-cli-*-linux-${{ matrix.arch }}.tar.gz" -O "/tmp/multica.tar.gz"
           tar -xzf /tmp/multica.tar.gz -C binaries/${{ matrix.arch }} multica

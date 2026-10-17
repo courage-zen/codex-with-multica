@@ -31,9 +31,6 @@ fi
 PROJECT_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('${SCRIPT_DIR}/versions.yaml'))['project']['version'])" 2>&1) || {
     echo "Error: failed to read project version" >&2; exit 1
 }
-CC_PROXY_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('${SCRIPT_DIR}/versions.yaml'))['cc_proxy']['version'])" 2>&1) || {
-    echo "Error: failed to read cc_proxy version" >&2; exit 1
-}
 MULTICA_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('${SCRIPT_DIR}/versions.yaml'))['multica']['version'])" 2>&1) || {
     echo "Error: failed to read multica version" >&2; exit 1
 }
@@ -46,11 +43,9 @@ case "${ARCH}" in
     arm64) CODEX_ARCH="aarch64" ;;
 esac
 
-# Download binaries
+# Download binaries (cc-proxy excluded while its repo is private)
 echo "Downloading binaries to binaries/${ARCH}/ ..."
 mkdir -p "${SCRIPT_DIR}/binaries/${ARCH}"
-
-gh release download "v${CC_PROXY_VERSION}" -R courage-zen/cc-proxy -p "cc-proxy-${ARCH}" -O "binaries/${ARCH}/cc-proxy" --clobber
 
 gh release download "v${MULTICA_VERSION}" -R multica-ai/multica -p "multica-cli-*-linux-${ARCH}.tar.gz" -O "/tmp/multica.tar.gz" --clobber
 tar -xzf /tmp/multica.tar.gz -C "binaries/${ARCH}" multica
@@ -68,7 +63,6 @@ TAG="codex-with-multica:${PROJECT_VERSION}-${ARCH}"
 
 echo "Building: TAG=${TAG}"
 echo "  PROJECT_VERSION=${PROJECT_VERSION}"
-echo "  CC_PROXY_VERSION=${CC_PROXY_VERSION}"
 echo "  MULTICA_VERSION=${MULTICA_VERSION}"
 echo "  CODEX_VERSION=${CODEX_VERSION}"
 
