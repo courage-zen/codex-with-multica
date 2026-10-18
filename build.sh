@@ -37,13 +37,17 @@ MULTICA_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('${SCRIPT_D
 CODEX_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('${SCRIPT_DIR}/versions.yaml'))['codex']['version'])" 2>&1) || {
     echo "Error: failed to read codex version" >&2; exit 1
 }
+CC_PROXY_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('${SCRIPT_DIR}/versions.yaml'))['cc_proxy']['version'])" 2>&1) || {
+    echo "Error: failed to read cc-proxy version" >&2; exit 1
+}
 
 case "${ARCH}" in
     amd64) CODEX_ARCH="x86_64" ;;
     arm64) CODEX_ARCH="aarch64" ;;
 esac
 
-# Download binaries (cc-proxy excluded while its repo is private)
+# Download binaries (cc-proxy is private: requires locally authenticated gh
+# with access to courage-zen/cc-proxy; CI uses the CC_PROXY_TOKEN secret)
 echo "Downloading binaries to binaries/${ARCH}/ ..."
 mkdir -p "${SCRIPT_DIR}/binaries/${ARCH}"
 
@@ -56,6 +60,8 @@ tar -xzf /tmp/codex.tar.gz -C "binaries/${ARCH}" "codex-${CODEX_ARCH}-unknown-li
 mv "binaries/${ARCH}/codex-${CODEX_ARCH}-unknown-linux-musl" "binaries/${ARCH}/codex"
 rm /tmp/codex.tar.gz
 
+gh release download "v${CC_PROXY_VERSION}" -R courage-zen/cc-proxy -p "cc-proxy-${ARCH}" -O "binaries/${ARCH}/cc-proxy" --clobber
+
 chmod +x "binaries/${ARCH}/"*
 
 DOCKERFILE="${SCRIPT_DIR}/base/Dockerfile"
@@ -65,6 +71,7 @@ echo "Building: TAG=${TAG}"
 echo "  PROJECT_VERSION=${PROJECT_VERSION}"
 echo "  MULTICA_VERSION=${MULTICA_VERSION}"
 echo "  CODEX_VERSION=${CODEX_VERSION}"
+echo "  CC_PROXY_VERSION=${CC_PROXY_VERSION}"
 
 docker build --progress=plain -f "${DOCKERFILE}" \
     --build-arg "TARGETARCH=${ARCH}" \

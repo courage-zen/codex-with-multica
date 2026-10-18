@@ -17,6 +17,7 @@ on:
 env:
   MULTICA_REPO: multica-ai/multica
   CODEX_REPO: openai/codex
+  CC_PROXY_REPO: courage-zen/cc-proxy
 
 jobs:
   build:
@@ -43,9 +44,11 @@ jobs:
           PROJECT_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['project']['version'])")
           MULTICA_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['multica']['version'])")
           CODEX_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['codex']['version'])")
+          CC_PROXY_VERSION=$(python3 -c "import yaml; print(yaml.safe_load(open('versions.yaml'))['cc_proxy']['version'])")
           echo "PROJECT_VERSION=$PROJECT_VERSION" >> $GITHUB_OUTPUT
           echo "MULTICA_VERSION=$MULTICA_VERSION" >> $GITHUB_OUTPUT
           echo "CODEX_VERSION=$CODEX_VERSION" >> $GITHUB_OUTPUT
+          echo "CC_PROXY_VERSION=$CC_PROXY_VERSION" >> $GITHUB_OUTPUT
 
       - name: Download binaries
         env:
@@ -65,7 +68,23 @@ jobs:
           mv "binaries/${{ matrix.arch }}/codex-${{ matrix.codex_arch }}-unknown-linux-musl" "binaries/${{ matrix.arch }}/codex"
           rm /tmp/codex.tar.gz
 
-          ls -la binaries/${{ matrix.arch }}/
+      # cc-proxy repo 是 private，GITHUB_TOKEN 访问不到其 release 资产：
+      # 需要 CC_PROXY_TOKEN secret（fine-grained PAT，仅 cc-proxy 仓库，contents:read）
+      - name: Download cc-proxy (private repo)
+        env:
+          GH_TOKEN: ${{ secrets.CC_PROXY_TOKEN }}
+          CC_PROXY_VERSION: ${{ steps.versions.outputs.CC_PROXY_VERSION }}
+        run: |
+          set -e
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "ERROR: CC_PROXY_TOKEN secret not set (fine-grained PAT with contents:read on courage-zen/cc-proxy)" >&2
+            exit 1
+          fi
+          gh release download "v${CC_PROXY_VERSION}" -R "${CC_PROXY_REPO}" -p "cc-proxy-${{ matrix.arch }}" -O "binaries/${{ matrix.arch }}/cc-proxy" --clobber
+          chmod +x "binaries/${{ matrix.arch }}/cc-proxy"
+
+      - name: List binaries
+        run: ls -la binaries/${{ matrix.arch }}/
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

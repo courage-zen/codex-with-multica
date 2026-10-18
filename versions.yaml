@@ -6,7 +6,7 @@ multica:
 codex:
   version: "0.163.0"
   repo: "openai/codex"
-# cc-proxy 暂不打包（repo private），恢复时加回：
-# cc_proxy:
-#   version: "0.3.0"
-#   repo: "courage-zen/cc-proxy"
+cc_proxy:
+  version: "0.3.0"
+  repo: "courage-zen/cc-proxy"
+  # repo 为 private：CI 通过 CC_PROXY_TOKEN secret（contents:read 的 fine-grained PAT）下载
