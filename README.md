@@ -50,6 +50,31 @@ cc-proxy (`courage-zen/cc-proxy`) 是 private 仓库，默认 `GITHUB_TOKEN` 访
 
 CI：push 到 main 自动构建 amd64/arm64 并推送到 GHCR。
 
+## 发布流程（Release flow）
+
+CI (`.github/workflows/build.yml`)：
+
+- **push 到 `main`**（paths `base/**`、`versions.yaml` 或 workflow 本身）：构建 `linux/amd64` 和 `linux/arm64` 镜像，推送到 GHCR 为 `latest-{arch}` 和 `{project.version}-{arch}`。
+- **push `v*` tag**：先照常构建并推送双架构镜像，再从 GHCR 拉回、`docker save | gzip` 导出为 tar.gz，挂到 GitHub Release 资产上。
+
+发版步骤：
+
+```bash
+# 1. 升 versions.yaml 的 project.version（以及需要升级的组件版本）。
+# 2. Commit 并 push 到 main —— CI 构建并推送 per-arch 镜像到 GHCR。
+# 3. 打 tag 并推送（tag 必须等于 project.version，CI 会校验）：
+git tag v0.1.0
+git push origin v0.1.0
+# 4. CI 创建带 codex-with-multica-{amd64,arm64}.tar.gz 资产的 GitHub Release。
+```
+
+下载使用（任一架构）：
+
+```bash
+gh release download v0.1.0 -R courage-zen/codex-with-multica -p 'codex-with-multica-amd64.tar.gz'
+gunzip -c codex-with-multica-amd64.tar.gz | docker load
+```
+
 ## 运行
 
 容器启动时需要挂载：
